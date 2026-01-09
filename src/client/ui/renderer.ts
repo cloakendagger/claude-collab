@@ -121,13 +121,25 @@ export class UIRenderer {
     this.screen.append(this.statusBar);
     this.screen.append(this.inputBox);
 
-    // Key bindings - Ctrl+C or 'q' to quit
-    this.screen.key(['C-c', 'q'], () => {
+    this.screen.render();
+  }
+
+  private quitHandler: (() => Promise<void>) | null = null;
+
+  /**
+   * Register handler for quit action
+   */
+  onQuit(handler: () => Promise<void>): void {
+    this.quitHandler = handler;
+
+    // Key bindings for quit - Ctrl+C, Escape, or Ctrl+Q
+    this.screen.key(['C-c', 'escape', 'C-q'], async () => {
+      if (this.quitHandler) {
+        await this.quitHandler();
+      }
       this.destroy();
       process.exit(0);
     });
-
-    this.screen.render();
   }
 
   /**
@@ -167,7 +179,8 @@ export class UIRenderer {
    * Render full conversation history
    */
   renderConversation(messages: any[]): void {
-    this.conversationBox.setContent('');
+    // Properly clear all content and lines
+    this.clearConversation();
 
     messages.forEach(msg => {
       if (msg.role === 'user') {
@@ -183,10 +196,17 @@ export class UIRenderer {
   }
 
   /**
-   * Clear conversation display
+   * Clear conversation display - properly clears both content and lines
    */
   clearConversation(): void {
+    // Delete all lines first (pushLine adds to internal line array)
+    const lines = this.conversationBox.getLines();
+    for (let i = lines.length - 1; i >= 0; i--) {
+      this.conversationBox.deleteLine(i);
+    }
+    // Also clear content
     this.conversationBox.setContent('');
+    this.assistantBuffer = '';
     this.screen.render();
   }
 
@@ -375,6 +395,15 @@ export class UIRenderer {
   showStatus(message: string): void {
     this.statusBar.setContent(` ${message}`);
     this.statusBar.style.fg = 'white';
+    this.screen.render();
+  }
+
+  /**
+   * Append system/info message to conversation
+   */
+  appendSystemMessage(message: string): void {
+    this.conversationBox.pushLine(chalk.gray(`  ${message}`));
+    this.conversationBox.setScrollPerc(100);
     this.screen.render();
   }
 

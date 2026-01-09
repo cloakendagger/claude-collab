@@ -9,6 +9,7 @@ import { WebSocketClient } from './api/websocket-client';
 import { UIRenderer } from './ui/renderer';
 import { ToolExecutor } from './tools/executor';
 import { FILE_TOOLS } from './tools/file-ops';
+import { loadConfig, saveConfig, getConfigPath } from './config';
 import { v4 as uuidv4 } from 'uuid';
 import chalk from 'chalk';
 import * as readline from 'readline';
@@ -85,6 +86,11 @@ class TUIClient {
 
       await this.handleUserMessage(input);
     });
+
+    // Handle quit (Ctrl+C, Escape, Ctrl+Q)
+    this.ui.onQuit(async () => {
+      await this.cleanup();
+    });
   }
 
   private pendingInput: string | null = null;
@@ -104,13 +110,21 @@ class TUIClient {
         this.ui.clearConversation();
         this.ui.showStatus('Conversation cleared');
         break;
+      case '/config':
+        const cfg = loadConfig();
+        this.ui.showStatus(`Config: ${getConfigPath()}`);
+        this.ui.appendSystemMessage(`Server: ${cfg.serverUrl || '(not set)'}`);
+        this.ui.appendSystemMessage(`Username: ${cfg.username || '(not set)'}`);
+        this.ui.appendSystemMessage(`Session: ${cfg.sessionId || '(not set)'}`);
+        this.ui.appendSystemMessage(`API Key: ${cfg.apiKey ? cfg.apiKey.substring(0, 12) + '...' : '(not set)'}`);
+        break;
       case '/quit':
       case '/exit':
         await this.cleanup();
         process.exit(0);
         break;
       case '/help':
-        this.ui.showStatus('Commands: /clear, /lock, /release, /quit, /help');
+        this.ui.showStatus('Commands: /clear, /config, /lock, /release, /quit');
         break;
       default:
         this.ui.showError(`Unknown command: ${command}`);
@@ -120,17 +134,14 @@ class TUIClient {
   private setupWSHandlers(): void {
     // Full state sync
     this.wsClient.on('sync.state', (data: any) => {
-      // Only replace conversation on initial sync
+      // Only render conversation on initial sync
       if (!this.initialSyncDone) {
         this.conversation = this.convertToAnthropicFormat(data.messages);
         this.ui.renderConversation(data.messages);
         this.initialSyncDone = true;
-      } else {
-        // After initial sync, only update UI with latest from database
-        // but keep our conversation array intact (it's updated via broadcasts)
-        this.ui.renderConversation(data.messages);
       }
-
+      // After initial sync, don't re-render messages - they're handled by broadcasts
+      // Only update participants and lock status
       this.ui.updateParticipants(data.participants);
       this.ui.updateLockStatus(data.lockHolder, data.lockUsername);
     });
@@ -590,19 +601,22 @@ async function main() {
   console.log(chalk.cyan('║   Shared Claude Session - Client     ║'));
   console.log(chalk.cyan('╚═══════════════════════════════════════╝\n'));
 
-  // Parse command line arguments (optional)
+  // Load saved config
+  const config = loadConfig();
+  console.log(chalk.gray(`Config: ${getConfigPath()}\n`));
+
+  // Parse command line arguments (override config)
   const args = process.argv.slice(2);
   let username = args[0];
   let sessionId = args[1];
 
-  // Prompt for server URL
-  let serverUrl = process.env.SERVER_URL;
+  // Server URL: env > config > prompt
+  let serverUrl = process.env.SERVER_URL || config.serverUrl;
   if (!serverUrl) {
-    console.log(chalk.gray('No SERVER_URL environment variable found'));
-    const urlInput = await prompt(chalk.blue('WebSocket URL (press Enter for localhost): '));
+    const urlInput = await prompt(chalk.blue('WebSocket URL (Enter for localhost): '));
     serverUrl = urlInput.trim() || 'ws://localhost:3000';
   } else {
-    console.log(chalk.gray(`Using server from environment: ${serverUrl}`));
+    console.log(chalk.gray(`Server: ${serverUrl}`));
   }
 
   // Validate URL format
@@ -611,35 +625,44 @@ async function main() {
     process.exit(1);
   }
 
-  // Prompt for missing values
+  // Username: args > config > prompt
+  username = username || config.username || '';
   if (!username) {
     username = await prompt(chalk.blue('Your name: '));
     if (!username) {
       console.log(chalk.red('Username is required'));
       process.exit(1);
     }
+  } else {
+    console.log(chalk.gray(`Username: ${username}`));
   }
 
+  // Session ID: args > config > prompt
+  sessionId = sessionId || config.sessionId || '';
   if (!sessionId) {
     sessionId = await prompt(chalk.blue('Session ID: '));
     if (!sessionId) {
       console.log(chalk.red('Session ID is required'));
       process.exit(1);
     }
+  } else {
+    console.log(chalk.gray(`Session: ${sessionId}`));
   }
 
-  // Check for API key
-  let apiKey = process.env.ANTHROPIC_API_KEY;
+  // API key: env > config > prompt
+  let apiKey = process.env.ANTHROPIC_API_KEY || config.apiKey;
   if (!apiKey) {
-    console.log(chalk.gray('API key not found in environment'));
     apiKey = await prompt(chalk.blue('Anthropic API Key: '), true);
     if (!apiKey || !apiKey.startsWith('sk-ant-')) {
       console.log(chalk.red('\nInvalid API key format (should start with sk-ant-)'));
       process.exit(1);
     }
   } else {
-    console.log(chalk.gray(`Using API key from environment (${apiKey.substring(0, 12)}...)`));
+    console.log(chalk.gray(`API Key: ${apiKey.substring(0, 12)}...`));
   }
+
+  // Save config for next time
+  saveConfig({ serverUrl, username, sessionId, apiKey });
 
   console.log(chalk.gray(`\nConnecting to: ${serverUrl}\n`));
 

@@ -4,6 +4,10 @@ data/
 *.db
 *.log
 .env
+.env.*
 .DS_Store
 *.swp
 *.swo
+
+# Client config (contains API keys)
+.claude-collab/

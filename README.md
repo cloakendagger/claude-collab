@@ -99,12 +99,17 @@ ANTHROPIC_API_KEY=sk-ant-... npm run dev:client -- Bob TEAM-SESSION
 
 ## Commands
 
-- **Ctrl+Enter** - Send message (automatically requests lock)
+**Keyboard Shortcuts:**
+- **Enter** - Send message (automatically requests lock)
+- **Escape** / **Ctrl+C** / **Ctrl+Q** - Exit client
+
+**Slash Commands:**
+- **/clear** - Clear conversation history
+- **/config** - Show saved configuration
 - **/lock** - Manually request lock
 - **/release** - Release lock manually
 - **/quit** or **/exit** - Leave the session
-- **/help** - Show help
-- **Ctrl+C** - Exit client
+- **/help** - Show available commands
 
 ## Cloud Deployment (Google Cloud Run)
 
@@ -112,11 +117,20 @@ ANTHROPIC_API_KEY=sk-ant-... npm run dev:client -- Bob TEAM-SESSION
 
 1. Install [Google Cloud CLI](https://cloud.google.com/sdk/docs/install)
 2. Authenticate: `gcloud auth login`
-3. Create/select project: `gcloud projects create PROJECT_ID` or use existing
+3. Create/select project: `gcloud projects create your-project-id` or use existing
 
 ### Deploy
 
 ```bash
+# Option 1: Pass project ID as argument
+./deploy-to-cloud-run.sh your-project-id
+
+# Option 2: Set environment variable
+export GCP_PROJECT_ID=your-project-id
+./deploy-to-cloud-run.sh
+
+# Option 3: Use gcloud default project
+gcloud config set project your-project-id
 ./deploy-to-cloud-run.sh
 ```
 
@@ -130,8 +144,10 @@ The script will:
 
 ```bash
 export SERVER_URL=wss://your-service-xxxxx.run.app
-ANTHROPIC_API_KEY=sk-ant-... npm run client -- Alice SESSION123
+npm run client -- Alice SESSION123
 ```
+
+The client will save the SERVER_URL for future runs.
 
 ## File Tool Support
 
@@ -172,6 +188,18 @@ shared-claude-session/
 
 ## Configuration
 
+### Persistent Settings
+
+The client automatically saves your settings to `~/.claude-collab/config.json`:
+- Server URL
+- Username
+- Session ID
+- API Key
+
+On subsequent runs, you won't need to re-enter these values. Use `/config` to view saved settings.
+
+**Priority order:** Command line args > Environment variables > Saved config > Prompt
+
 ### Environment Variables
 
 **Server:**
@@ -180,8 +208,8 @@ shared-claude-session/
 - `NODE_ENV` - Environment (production/development)
 
 **Client:**
-- `ANTHROPIC_API_KEY` - Your Anthropic API key (required)
-- `SERVER_URL` - WebSocket server URL (default: `ws://localhost:3000`)
+- `ANTHROPIC_API_KEY` - Your Anthropic API key (overrides saved config)
+- `SERVER_URL` - WebSocket server URL (overrides saved config)
 
 ## Troubleshooting
 

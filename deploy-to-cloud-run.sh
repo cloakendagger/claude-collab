@@ -1,12 +1,23 @@
 #!/bin/bash
 # Deployment script for Google Cloud Run
-# Project: skunkworks-483703
+# Usage: ./deploy-to-cloud-run.sh [PROJECT_ID]
 
 set -e
 
-PROJECT_ID="skunkworks-483703"
+# Get project ID from argument, environment, or gcloud config
+PROJECT_ID="${1:-${GCP_PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}}"
+
+if [ -z "$PROJECT_ID" ]; then
+    echo "❌ No project ID specified."
+    echo ""
+    echo "Usage: ./deploy-to-cloud-run.sh PROJECT_ID"
+    echo "   or: export GCP_PROJECT_ID=your-project-id && ./deploy-to-cloud-run.sh"
+    echo "   or: gcloud config set project your-project-id && ./deploy-to-cloud-run.sh"
+    exit 1
+fi
+
 SERVICE_NAME="claude-relay"
-REGION="us-central1"
+REGION="${GCP_REGION:-us-central1}"
 IMAGE_NAME="gcr.io/${PROJECT_ID}/${SERVICE_NAME}"
 
 echo "🚀 Deploying Claude Relay Server to Google Cloud Run"
