@@ -5,11 +5,11 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { WebSocketClient } from './api/websocket-client';
-import { UIRenderer } from './ui/renderer';
-import { ToolExecutor } from './tools/executor';
-import { FILE_TOOLS } from './tools/file-ops';
-import { loadConfig, saveConfig, getConfigPath } from './config';
+import { WebSocketClient } from './api/websocket-client.js';
+import { InkUI } from './ui/ink-ui.js';
+import { ToolExecutor } from './tools/executor.js';
+import { FILE_TOOLS } from './tools/file-ops.js';
+import { loadConfig, saveConfig, getConfigPath } from './config.js';
 import { v4 as uuidv4 } from 'uuid';
 import chalk from 'chalk';
 import * as readline from 'readline';
@@ -24,7 +24,7 @@ interface ClientConfig {
 class TUIClient {
   private anthropic: Anthropic;
   private wsClient: WebSocketClient;
-  private ui: UIRenderer;
+  private ui!: InkUI;
   private tools: ToolExecutor;
 
   private clientId: string;
@@ -43,15 +43,38 @@ class TUIClient {
 
     this.anthropic = new Anthropic({ apiKey: config.apiKey });
     this.wsClient = new WebSocketClient(config.serverUrl);
-    this.ui = new UIRenderer();
     this.tools = new ToolExecutor();
+  }
+
+  private initUI(): void {
+    this.ui = new InkUI({
+      sessionId: this.sessionId,
+      username: this.username,
+      onSubmit: async (input: string) => {
+        if (input.startsWith('/')) {
+          await this.handleCommand(input);
+          return;
+        }
+
+        if (!this.hasLock) {
+          await this.requestLock();
+          this.pendingInput = input;
+          return;
+        }
+
+        await this.handleUserMessage(input);
+      },
+      onQuit: async () => {
+        await this.cleanup();
+      }
+    });
   }
 
   async start(): Promise<void> {
     // Initialize UI
+    this.initUI();
     this.ui.render();
     this.ui.showStatus('Connecting to session...');
-    this.setupUIHandlers();
 
     // Connect to relay
     try {
@@ -62,35 +85,10 @@ class TUIClient {
       await this.syncConversation();
 
       this.ui.showStatus('Connected! Type your message...');
-      this.ui.focus();
     } catch (error: any) {
       this.ui.showError(`Connection failed: ${error.message}`);
       setTimeout(() => process.exit(1), 2000);
     }
-  }
-
-  private setupUIHandlers(): void {
-    // Handle message submission
-    this.ui.onSubmit(async (input: string) => {
-      if (input.startsWith('/')) {
-        await this.handleCommand(input);
-        return;
-      }
-
-      if (!this.hasLock) {
-        await this.requestLock();
-        // Store input for when lock is granted
-        this.pendingInput = input;
-        return;
-      }
-
-      await this.handleUserMessage(input);
-    });
-
-    // Handle quit (Ctrl+C, Escape, Ctrl+Q)
-    this.ui.onQuit(async () => {
-      await this.cleanup();
-    });
   }
 
   private pendingInput: string | null = null;

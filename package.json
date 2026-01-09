@@ -1,14 +1,15 @@
 {
   "name": "shared-claude-session",
   "version": "1.0.0",
+  "type": "module",
   "description": "Terminal-based collaborative Claude CLI session sharing",
   "main": "dist/server/index.js",
   "scripts": {
     "build": "tsc",
     "server": "node dist/server/relay.js",
     "client": "node dist/client/tui-client.js",
-    "dev:server": "ts-node src/server/relay.ts",
-    "dev:client": "ts-node src/client/tui-client.ts",
+    "dev:server": "node --loader ts-node/esm src/server/relay.ts",
+    "dev:client": "node --loader ts-node/esm src/client/tui-client.ts",
     "docker:start": "docker-compose up -d",
     "docker:stop": "docker-compose down",
     "docker:restart": "docker-compose restart",
@@ -29,16 +30,18 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
     "better-sqlite3": "^9.2.2",
-    "blessed": "^0.1.81",
     "chalk": "^4.1.2",
     "glob": "^10.3.10",
+    "ink": "^4.4.1",
+    "ink-text-input": "^5.0.1",
+    "react": "^18.3.1",
     "uuid": "^9.0.1",
     "ws": "^8.16.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.8",
-    "@types/blessed": "^0.1.25",
     "@types/node": "^20.10.6",
+    "@types/react": "^18.3.27",
     "@types/uuid": "^9.0.7",
     "@types/ws": "^8.5.10",
     "ts-node": "^10.9.2",

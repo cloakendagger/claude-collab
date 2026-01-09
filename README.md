@@ -111,6 +111,14 @@ ANTHROPIC_API_KEY=sk-ant-... npm run dev:client -- Bob TEAM-SESSION
 - **/quit** or **/exit** - Leave the session
 - **/help** - Show available commands
 
+## UI Features
+
+The client uses a modern React-based terminal UI (powered by [Ink](https://github.com/vadimdemedes/ink)):
+- Real-time streaming of Claude's responses
+- Participant sidebar showing who's connected
+- Status bar with lock state and activity indicators
+- Clean, flicker-free rendering
+
 ## Cloud Deployment (Google Cloud Run)
 
 ### Prerequisites
@@ -320,6 +328,6 @@ For issues, questions, or feature requests, please open an issue on GitHub.
 
 Built with:
 - [Anthropic SDK](https://github.com/anthropics/anthropic-sdk-typescript)
-- [blessed](https://github.com/chjj/blessed) - Terminal UI
+- [Ink](https://github.com/vadimdemedes/ink) - React for CLI apps
 - [ws](https://github.com/websockets/ws) - WebSocket library
 - [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) - SQLite database

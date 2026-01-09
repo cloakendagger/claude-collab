@@ -6,7 +6,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { glob } from 'glob';
-import type { ToolResult } from './file-ops';
+import type { ToolResult } from './file-ops.js';
 
 export class ToolExecutor {
   private projectRoot: string;
