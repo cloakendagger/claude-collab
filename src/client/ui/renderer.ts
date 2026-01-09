@@ -30,12 +30,12 @@ export class UIRenderer {
       fullUnicode: true
     });
 
-    // Conversation history (top 80% of left side)
+    // Conversation history (main area)
     this.conversationBox = blessed.box({
       top: 0,
       left: 0,
       width: '80%',
-      height: '77%',
+      height: '100%-8',
       label: ' Conversation ',
       border: {
         type: 'line'
@@ -45,8 +45,8 @@ export class UIRenderer {
       mouse: true,
       keys: true,
       vi: true,
-      wrap: true,  // Enable word wrapping
-      tags: true,  // Support color tags
+      wrap: true,
+      tags: true,
       scrollbar: {
         ch: '█',
         style: {
@@ -60,16 +60,17 @@ export class UIRenderer {
       }
     });
 
-    // Participants list (right 20%)
+    // Participants list (right side)
     this.participantList = blessed.box({
       top: 0,
       right: 0,
       width: '20%',
-      height: '77%',
+      height: '100%-8',
       label: ' Participants ',
       border: {
         type: 'line'
       },
+      tags: true,
       style: {
         border: {
           fg: 'magenta'
@@ -77,15 +78,15 @@ export class UIRenderer {
       }
     });
 
-    // Status bar
+    // Status bar (above input)
     this.statusBar = blessed.box({
-      top: '77%',
+      bottom: 5,
       left: 0,
       width: '100%',
       height: 3,
-      content: 'Status: Connecting...',
+      content: ' Status: Connecting...',
       style: {
-        fg: 'yellow'
+        fg: 'gray'
       }
     });
 
@@ -94,22 +95,22 @@ export class UIRenderer {
       bottom: 0,
       left: 0,
       width: '100%',
-      height: '20%',
-      label: ' Your Message (Press Ctrl+S to send) ',
+      height: 5,
+      label: ' Message (Enter to send) ',
       border: {
         type: 'line'
       },
       inputOnFocus: true,
       keys: true,
       mouse: true,
-      wrap: true,  // Enable word wrapping in input
+      wrap: true,
       style: {
         border: {
-          fg: 'green'
+          fg: 'cyan'
         },
         focus: {
           border: {
-            fg: 'brightgreen'
+            fg: 'brightcyan'
           }
         }
       }
@@ -133,15 +134,19 @@ export class UIRenderer {
    * Register handler for message submission
    */
   onSubmit(handler: (input: string) => void): void {
-    // Ctrl+S to send message
-    this.inputBox.key(['C-s'], () => {
+    const submitHandler = () => {
       const text = this.inputBox.getValue();
       if (text.trim()) {
         handler(text.trim());
         this.inputBox.clearValue();
         this.screen.render();
       }
-    });
+    };
+
+    // Enter to send message
+    this.inputBox.key(['enter'], submitHandler);
+    // Ctrl+S as alternative (for multiline in future)
+    this.inputBox.key(['C-s'], submitHandler);
   }
 
   /**
@@ -178,6 +183,14 @@ export class UIRenderer {
   }
 
   /**
+   * Clear conversation display
+   */
+  clearConversation(): void {
+    this.conversationBox.setContent('');
+    this.screen.render();
+  }
+
+  /**
    * Extract text content from message content
    */
   private extractContent(content: any): string {
@@ -208,8 +221,15 @@ export class UIRenderer {
    * Append user message
    */
   appendUserMessage(username: string, content: string): void {
-    const formatted = chalk.blue('●') + ' ' + chalk.bold.cyan(username) + ': ' + content;
-    this.conversationBox.pushLine(formatted);
+    const prefix = chalk.blue('●') + ' ' + chalk.bold.cyan(username) + ': ';
+    const lines = content.split('\n');
+    lines.forEach((line, i) => {
+      if (i === 0) {
+        this.conversationBox.pushLine(prefix + line);
+      } else {
+        this.conversationBox.pushLine('  ' + line);
+      }
+    });
     this.conversationBox.setScrollPerc(100);
     this.screen.render();
   }
@@ -248,8 +268,15 @@ export class UIRenderer {
    */
   appendAssistantMessage(content: any): void {
     const text = this.extractContent(content);
-    const formatted = chalk.green('●') + ' ' + chalk.bold.white('Claude') + ': ' + text;
-    this.conversationBox.pushLine(formatted);
+    const prefix = chalk.green('●') + ' ' + chalk.bold.white('Claude') + ': ';
+    const lines = text.split('\n');
+    lines.forEach((line, i) => {
+      if (i === 0) {
+        this.conversationBox.pushLine(prefix + line);
+      } else {
+        this.conversationBox.pushLine('  ' + line);
+      }
+    });
     this.conversationBox.setScrollPerc(100);
     this.screen.render();
   }
@@ -277,7 +304,7 @@ export class UIRenderer {
       const spinner = this.THINKING_CHARS[this.thinkingFrame % this.THINKING_CHARS.length];
       const text = this.THINKING_TEXTS[Math.floor(this.thinkingFrame / this.THINKING_CHARS.length) % this.THINKING_TEXTS.length];
 
-      this.statusBar.setContent(chalk.italic.gray(`${spinner} ${text}...`));
+      this.statusBar.setContent(chalk.italic.gray(` ${spinner} ${text}...`));
       this.screen.render();
       this.thinkingFrame++;
     }, 200);
@@ -297,8 +324,10 @@ export class UIRenderer {
    * Show tool execution
    */
   showToolExecution(toolName: string, input: any): void {
-    const formatted = chalk.yellow(`\\n🔧 Executing tool: ${toolName}\\nInput: ${JSON.stringify(input, null, 2)}\\n`);
-    this.conversationBox.pushLine(formatted);
+    this.conversationBox.pushLine('');
+    this.conversationBox.pushLine(chalk.yellow(`🔧 Executing tool: ${toolName}`));
+    this.conversationBox.pushLine(chalk.gray(`Input: ${JSON.stringify(input, null, 2)}`));
+    this.conversationBox.pushLine('');
     this.conversationBox.setScrollPerc(100);
     this.screen.render();
   }
@@ -308,11 +337,11 @@ export class UIRenderer {
    */
   setLockState(hasLock: boolean): void {
     if (hasLock) {
-      this.inputBox.style.border.fg = 'brightgreen';
-      this.inputBox.setLabel(' Your Message - YOU HAVE THE LOCK ');
+      this.inputBox.style.border.fg = 'green';
+      this.inputBox.setLabel(' Message (Enter to send) - Active ');
     } else {
-      this.inputBox.style.border.fg = 'red';
-      this.inputBox.setLabel(' Waiting for lock... ');
+      this.inputBox.style.border.fg = 'cyan';
+      this.inputBox.setLabel(' Message (Enter to send) ');
     }
     this.screen.render();
   }
@@ -322,10 +351,10 @@ export class UIRenderer {
    */
   updateLockStatus(clientId: string | null, username: string | null): void {
     if (clientId && username) {
-      this.statusBar.setContent(`Status: ${username} is typing... 🔒`);
+      this.statusBar.setContent(` ${username} is typing...`);
       this.statusBar.style.fg = 'yellow';
     } else {
-      this.statusBar.setContent('Status: Lock available 🟢');
+      this.statusBar.setContent(' Ready');
       this.statusBar.style.fg = 'green';
     }
     this.screen.render();
@@ -336,7 +365,7 @@ export class UIRenderer {
    */
   updateParticipants(participants: Array<{ username: string; clientId: string }>): void {
     const lines = participants.map(p => `  • ${p.username}`);
-    this.participantList.setContent(lines.join('\\n'));
+    this.participantList.setContent(lines.join('\n'));
     this.screen.render();
   }
 
@@ -344,7 +373,7 @@ export class UIRenderer {
    * Show status message
    */
   showStatus(message: string): void {
-    this.statusBar.setContent(`Status: ${message}`);
+    this.statusBar.setContent(` ${message}`);
     this.statusBar.style.fg = 'white';
     this.screen.render();
   }
@@ -353,8 +382,9 @@ export class UIRenderer {
    * Show error message
    */
   showError(message: string): void {
-    const formatted = chalk.red(`\\n❌ ${message}\\n`);
-    this.conversationBox.pushLine(formatted);
+    this.conversationBox.pushLine('');
+    this.conversationBox.pushLine(chalk.red(`❌ ${message}`));
+    this.conversationBox.pushLine('');
     this.conversationBox.setScrollPerc(100);
     this.screen.render();
   }

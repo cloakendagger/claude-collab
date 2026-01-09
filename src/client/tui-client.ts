@@ -99,13 +99,18 @@ class TUIClient {
       case '/release':
         await this.releaseLock();
         break;
+      case '/clear':
+        this.conversation = [];
+        this.ui.clearConversation();
+        this.ui.showStatus('Conversation cleared');
+        break;
       case '/quit':
       case '/exit':
         await this.cleanup();
         process.exit(0);
         break;
       case '/help':
-        this.ui.showStatus('Commands: /lock, /release, /quit, /help');
+        this.ui.showStatus('Commands: /clear, /lock, /release, /quit, /help');
         break;
       default:
         this.ui.showError(`Unknown command: ${command}`);
@@ -314,25 +319,23 @@ class TUIClient {
     } catch (error: any) {
       this.ui.hideThinking();
 
-      // Log full error for debugging
-      console.error('API Error Details:', error);
-
-      let errorMsg = `API Error: ${error.message}`;
+      // Build user-friendly error message
+      let errorMsg = 'API Error';
       if (error.status) {
-        errorMsg += ` (Status: ${error.status})`;
+        errorMsg += ` (${error.status})`;
+      }
+
+      if (error.status === 429) {
+        errorMsg = 'Rate limited - please wait before trying again';
+      } else if (error.status === 400) {
+        errorMsg = 'Invalid request - conversation may be corrupted. Try /clear';
+      } else if (error.status === 401) {
+        errorMsg = 'Invalid API key';
+      } else if (error.status === 500) {
+        errorMsg = 'Anthropic server error - try again';
       }
 
       this.ui.showError(errorMsg);
-
-      // Handle specific errors
-      if (error.status === 429) {
-        this.ui.showError('Rate limited. Please wait before trying again.');
-      } else if (error.status === 400) {
-        this.ui.showError('Invalid request. Check conversation format.');
-        // Log conversation for debugging
-        console.error('Conversation that caused 400:', JSON.stringify(this.conversation, null, 2));
-      }
-
       await this.releaseLock();
     }
   }
@@ -401,7 +404,7 @@ class TUIClient {
   }
 
   private convertToAnthropicFormat(messages: any[]): Anthropic.Messages.MessageParam[] {
-    return messages.map(msg => {
+    const converted = messages.map(msg => {
       // Handle content properly
       let content;
       if (typeof msg.content === 'string') {
@@ -428,6 +431,69 @@ class TUIClient {
       }
       return msg.content && (Array.isArray(msg.content) ? msg.content.length > 0 : true);
     });
+
+    // Validate and fix tool_result / tool_use pairing
+    return this.validateToolMessages(converted);
+  }
+
+  /**
+   * Validate that all tool_result blocks have matching tool_use blocks
+   * Remove orphaned tool_results to prevent API errors
+   */
+  private validateToolMessages(messages: Anthropic.Messages.MessageParam[]): Anthropic.Messages.MessageParam[] {
+    const result: Anthropic.Messages.MessageParam[] = [];
+
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+
+      // Check if this is a user message with tool_result content
+      if (msg.role === 'user' && Array.isArray(msg.content)) {
+        const toolResults = msg.content.filter((block: any) => block.type === 'tool_result');
+
+        if (toolResults.length > 0) {
+          // Find the previous assistant message
+          const prevMsg = result.length > 0 ? result[result.length - 1] : null;
+
+          if (!prevMsg || prevMsg.role !== 'assistant') {
+            // No previous assistant message - skip this tool_result message
+            console.warn('Skipping orphaned tool_result (no previous assistant message)');
+            continue;
+          }
+
+          // Get tool_use IDs from the previous assistant message
+          const assistantContent = Array.isArray(prevMsg.content) ? prevMsg.content : [];
+          const toolUseIds = new Set(
+            assistantContent
+              .filter((block: any) => block.type === 'tool_use')
+              .map((block: any) => block.id)
+          );
+
+          // Filter to only tool_results that have matching tool_use
+          const validToolResults = toolResults.filter((block: any) =>
+            toolUseIds.has(block.tool_use_id)
+          );
+
+          if (validToolResults.length === 0) {
+            // All tool_results are orphaned - skip this message
+            console.warn('Skipping message with all orphaned tool_results');
+            continue;
+          }
+
+          // Keep only valid content blocks
+          const otherContent = msg.content.filter((block: any) => block.type !== 'tool_result');
+          const validContent = [...otherContent, ...validToolResults];
+
+          if (validContent.length > 0) {
+            result.push({ role: 'user', content: validContent });
+          }
+          continue;
+        }
+      }
+
+      result.push(msg);
+    }
+
+    return result;
   }
 
   private async requestLock(): Promise<void> {
